@@ -3,6 +3,9 @@ uuid = "78be0076-8ecc-45ef-a06f-667d575be7b6"
 authors = ["Dominik Bergermann", "Nick Michaelis"]
 version = "1.0.0-DEV"
 
+[deps]
+Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
+
 [compat]
 julia = "1"
 
