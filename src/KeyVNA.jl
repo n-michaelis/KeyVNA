@@ -38,6 +38,8 @@ export
     deleteTrace,
     deleteAllTraces,
 
+    instrumentSimplifiedSetup,
+
     VNAParameters
 
 
@@ -45,16 +47,36 @@ export
 ### Private functions ###
 # They are not beeing exported
 
-function send(socket::Sockets.TCPSocket ,msg::String)
+"""
+    send(socket::TCPSocket, msg::String)
+
+Send `msg` to the TCP socket `socket`.
+
+Can be used to send any SCPI command directly to the VNA.
+"""
+function send(socket::Sockets.TCPSocket, msg::String)
     Sockets.write(socket, codeunits(msg))
 end
 
+"""
+    recv(socket::TCPSocket)
+
+Receive and return all buffered bytes from `socket`.
+If none are available, wait.
+Returns a `Vector{UInt8}`.
+"""
 function recv(socket::Sockets.TCPSocket)
     refreshBuffer(socket)
 
     return readavailable(socket)
 end
 
+"""
+    recv(socket::TCPSocket, nb::Integer)
+
+Receive and return `nb` number of bytes from `socket`.
+Returns a `Vector{UInt8}`.
+"""
 function recv(socket::Sockets.TCPSocket,nb::Integer)
     refreshBuffer(socket)
 
@@ -82,14 +104,18 @@ function async_reader(io::IO, timeout_sec)::Channel
     return ch
 end
 
+### End private functions ###
+
 
 ### Connection ###
 
-function connect(; host=nothing, port=5025)
-    if isnothing(host)
-        error("No IP given")
-    end
+"""
+    connect(host; port=5025)
 
+Establish a TCP connection to the VNA with IP address `host`.
+Return a `TCPSocket` if succesful and `nothing` if not.
+"""
+function connect(host; port=5025)
     try
         socket = Sockets.connect(host,port)
 
@@ -104,27 +130,45 @@ function connect(; host=nothing, port=5025)
     end
 end
 
+"""
+    disconnect(socket)
+
+Closes the TCP connection `socket`.
+"""
 function disconnect(socket::Sockets.TCPSocket)
     Sockets.close(socket)
 
-    return
+    return nothing
 end
 
+"""
+    identify(socket)
+
+"""
 function identify(socket::Sockets.TCPSocket)
     send(socket,"*IDN?\n")
 
-    return
+    return nothing
 end
 
+"""
+    clearStatus(socket)
+
+"""
 function clearStatus(socket::Sockets.TCPSocket)
     send(socket,"*CLS\n")
 
-    return
+    return nothing
 end
 
 
 ### Setup ###
 
+"""
+    setPowerLevel(socket::TCPSocket, power::Integer)
+
+Set the power level, of the VNA specified by `socket`, to `power` dBm.
+"""
 function setPowerLevel(socket::Sockets.TCPSocket,power::Integer)
     if power > 14
         error("Power threshold reached. Must be less than 14 dBm.")
@@ -132,15 +176,25 @@ function setPowerLevel(socket::Sockets.TCPSocket,power::Integer)
 
     send(socket, "SOURce:POWer:LEVel:IMMediate:AMPLitude "*string(power)*"\n")
 
-    return
+    return nothing
 end
 
-function setCalibration(socket::Sockets.TCPSocket,calName::String)
+"""
+    setCalibration(socket::TCPSocket ,calName::String)
+
+Set the calibration file, of the VNA specified by `socket`, to `calName`
+"""
+function setCalibration(socket::Sockets.TCPSocket, calName::String)
     send(socket, "SENSe:CORRection:CSET:ACTivate \""*string(calName)*"\",1\n")
 
     return
 end
 
+"""
+    setAveraging(socket::TCPSocket, state::Bool; counts::Int=50)
+
+TODO
+"""
 function setAveraging(socket::Sockets.TCPSocket,state::Bool; counts::Int=50)
     if counts <= 0
         error("Count number must be positive.")
@@ -155,6 +209,13 @@ function setAveraging(socket::Sockets.TCPSocket,state::Bool; counts::Int=50)
     return
 end
 
+"""
+    setFrequencies(socket::TCPSocket, center::Float64, span::Float64)
+
+Set frequency band, of the VNA specified by `socket`.
+The band is given by the `center` frequency and the `span`.
+The bounds are then given by `center` ± `span`/2.
+"""
 function setFrequencies(socket::Sockets.TCPSocket,center::Float64,span::Float64)
     if !(10e6 <= center <= 43.5e9)
         error("Center frequency must be between 10 MHz and 43.5 GHz.")
@@ -167,6 +228,11 @@ function setFrequencies(socket::Sockets.TCPSocket,center::Float64,span::Float64)
     return
 end
 
+"""
+    setSweepPoints(socket::TCPSocket, points::Integer)
+
+Set number of sweep points, of the VNA specified by `socket`.
+"""
 function setSweepPoints(socket::Sockets.TCPSocket, points::Integer)
     if points <= 0
         error("Must use at least one sweep point.")
@@ -177,6 +243,11 @@ function setSweepPoints(socket::Sockets.TCPSocket, points::Integer)
     return
 end
 
+"""
+    setIFBandwidth(socket::TCPSocket, bandwidth::Integer)
+
+Set IF bandwidth, of the VNA specified by `socket`.
+"""
 function setIFBandwidth(socket::Sockets.TCPSocket, bandwidth::Integer)
     if bandwidth <= 0
         error("Resolution must be greater that 0.")
@@ -187,18 +258,42 @@ function setIFBandwidth(socket::Sockets.TCPSocket, bandwidth::Integer)
     return
 end
 
+"""
+    setMeasurement(socket::TCPSocket, name::String)
+
+Set wich measurement, of the VNA specified by `socket`, to use.
+
+# name
+The string has to be in a certain format `"CH<n>_S<p>_<t>"``, with:
+- `n`: Channel number
+- `p`: Scattering parameter
+- `t`: trace number
+
+For example the String `"CH1_S11_1"` selects Channel 1, the parameter S11
+and the trace 1.
+"""
 function setMeasurement(socket::Sockets.TCPSocket, name::String)
     send(socket, "CALCulate:PARameter:SELect '"*name*"'\n")
 
     return
 end
 
+"""
+    setFormat2Log(socket::TCPSocket)
+
+Set the format of the VNA display to logarithmic scale.
+"""
 function setFormat2Log(socket::Sockets.TCPSocket)
     send(socket, "CALCulate:MEASure:FORMat MLOGarithmic\n")
 
     return
 end
 
+"""
+    setFastSweep(socket::TCPSocket, fast::Bool)
+
+Enable Fast Sweep mode.
+"""
 function setFastSweep(socket::Sockets.TCPSocket, fast::Bool)
     if fast
         send(socket,"SENSe:SWEep:SPEed FAST\n")
@@ -209,6 +304,14 @@ function setFastSweep(socket::Sockets.TCPSocket, fast::Bool)
     return
 end
 
+"""
+    setupFromFile(socket::TCPSocket,file::String)
+
+Set up the VNA specified by `socket` according to the settings specified
+in `file`.
+
+TODO: For more information see ...
+"""
 function setupFromFile(socket::Sockets.TCPSocket,file::String)
     for line in readlines(file)
         if line[1] == '#'
@@ -287,18 +390,33 @@ end
 
 ### Trigger ###
 
+"""
+    triggerContinuous(socket::TCPSocket)
+
+Set the trigger of the VNA to continous.
+"""
 function triggerContinuous(socket::Sockets.TCPSocket)
     send(socket, "SENse:SWEep:MODE HOLD\n")
 
     return
 end
 
+"""
+    triggerHold(socket::TCPSocket)
+
+Set the trigger of the VNA to hold.
+"""
 function triggerHold(socket::Sockets.TCPSocket)
     send(socket, "SENse:SWEep:MODE CONTinuous\n")
 
     return
 end
 
+"""
+    triggerSingle(socket::TCPSocket)
+
+Trigger the VNA once.
+"""
 function triggerSingle(socket::Sockets.TCPSocket)
     send(socket, "SENse:SWEep:MODE SINGle\n")
 
@@ -308,13 +426,33 @@ end
 
 ### Data ###
 
+"""
+    saveS2P(socket::TCPSocket, fileURL::String)
+
+Save the measurement as a S2P file `fileUrl` onto the VNA internal harddrive.
+
+Note, that the file is not beeing saved on the VNA and not the device, where
+this function is being called.
+The file can then be transfered manually.
+"""
 function saveS2P(socket::Sockets.TCPSocket, fileURL::String)
     send(socket, "MMEMory:STORe "*string(fileURL)*"\n")
 
     return
 end
 
-function getFrequencies(socket::Sockets.TCPSocket; waittime=0)
+"""
+    getFrequencies(socket::TCPSocket)
+
+Return all the actual sweep points as a `Vector{Float64}`.
+
+The sweep points are the frequencies at which the scattering parameter is
+measured during a sweep. They are specified by the number of sweeppoints and the
+frequency range.
+
+See also [`setSweepPoints`](@ref), [`setFrequencies`](@ref).
+"""
+function getFrequencies(socket::Sockets.TCPSocket)
     try
         clearBuffer(socket)
 
@@ -345,8 +483,6 @@ function getFrequencies(socket::Sockets.TCPSocket; waittime=0)
             error("End of Line Character expected to indicate end of data block")
         end
 
-        sleep(waittime)
-
         send(socket,"FORMat:DATA ASCii,0;*OPC?\n") # Set the return type back to ASCII
 
         return data
@@ -356,6 +492,11 @@ function getFrequencies(socket::Sockets.TCPSocket; waittime=0)
     end
 end
 
+"""
+    getSweepTime(socket::TCPSocket)
+
+Returns the time the VNA takes for the sweep.
+"""
 function getSweepTime(socket::Sockets.TCPSocket)
     clearBuffer(socket)
     send(socket, "SENSe:SWEep:TIME?\n")
@@ -363,7 +504,16 @@ function getSweepTime(socket::Sockets.TCPSocket)
     return Float64(bytes)
 end
 
-function complexFromTrace(data::Vector{Float64}) 
+"""
+    complexFromTrace(data::Vector{Float64})
+
+Takes the raw `data`` returned by the VNA and returns a `Vector{ComplexF64}`.
+
+The VNA returns a `Vector{Float64}`, where the each complex number is
+represented by two successive `Float64`, where the first is the real part and the second
+the imaginary.
+"""
+function complexFromTrace(data::Vector{Float64})
     d = zeros(ComplexF64,div(length(data),2))
 
     @views d += data[1:2:end]
@@ -412,7 +562,16 @@ import Core: Int, Float64
 Core.Int(data::Array{UInt8}) = parse(Int, String(data))
 Core.Float64(data::Array{UInt8}) = parse(Float64, String(data))
 
-function getTrace(socket::Sockets.TCPSocket; waittime=0)
+
+"""
+    getTrace(socket::TCPSocket)
+
+Performs a sweep and returns a `Vector{ComplexF64}` of the scattering parameter.
+
+Each element corresponds the the scattering parameter at the frequency given by
+the element of [`getFrequencies`](@ref) with the same index.
+"""
+function getTrace(socket::Sockets.TCPSocket)
     clearBuffer(socket)
 
     send(socket, "FORMat:DATA REAL,64\n") # Set the return type to a 64 bit Float
@@ -446,6 +605,22 @@ function getTrace(socket::Sockets.TCPSocket; waittime=0)
     return complexFromTrace(Vector(data))
 end
 
+"""
+    storeTraceInMemory(socket::TCPSocket, mnum::Integer)
+
+Perform a sweep and store the trace in the memory of the VNA.
+
+`mnum` must be a unique integer. It is used to store and identify
+multiple traces at the same time.
+If a trace with the same `mnum` already exists, the VNA will throw an error and
+the trace is not stored.
+Existing traces can only be overridden if the it is deleted first.
+The trace is stored as a measurement called `"data_<mnum>"` on the VNA.
+The prefix `"data_"` is used to distinguish the stored traces from any other
+created by the VNA itself.
+
+See also [`deleteTrace`](@ref), [`deleteAllTraces`](@ref) and [`getTraceFromMemory`](@ref).
+"""
 function storeTraceInMemory(socket::Sockets.TCPSocket, mnum::Integer)
     send(socket, "CALCulate1:PARameter:DEFine:EXTended 'data_"*string(mnum)*"','S11'\n")
     send(socket, "CALCulate1:PARameter:SELect 'data_"*string(mnum)*"'\n")
@@ -453,6 +628,13 @@ function storeTraceInMemory(socket::Sockets.TCPSocket, mnum::Integer)
     send(socket, "CALCulate1:MATH:MEMorize;*OPC?\n")
 end
 
+"""
+    getTraceFromMemory(socket::TCPSocket, mnum::Integer; delete=true)
+
+Returns the trace stored in the memory specified by `mnum`.
+
+See also [`getTrace`](@ref), [`deleteTrace`](@ref) and [`deleteAllTraces`](@ref).
+"""
 function getTraceFromMemory(socket::Sockets.TCPSocket, mnum::Integer; delete=true)
     clearBuffer(vna)
 
@@ -488,16 +670,32 @@ function getTraceFromMemory(socket::Sockets.TCPSocket, mnum::Integer; delete=tru
     return complexFromTrace(Vector(data))
 end
 
+"""
+    getTraceCatalog(socket::TCPSocket)
+
+Returns a list as a `String`, with all traces stored in the VNA.
+Not only those, that are created by [`storeTraceInMemory`](@ref).
+"""
 function getTraceCatalog(socket::Sockets.TCPSocket)
     send(socket,"CALCulate:PARameter:CATalog?\n")
     data = recv(vna)
     return String(data)
 end
 
+"""
+    deleteTrace(socket::TCPSocket, mnum::Integer)
+
+Delete the trace with the identifier `mnum`.
+"""
 function deleteTrace(socket::Sockets.TCPSocket, mnum::Integer)
     send(socket,"CALCulate:PARameter:DELete 'data_"*string(mnum)*"'\n")
 end
 
+"""
+    deleteAllTraces(socket::TCPSocket)
+
+Delete all traces, which were created by [`storeTraceInMemory`](@ref).
+"""
 function deleteAllTraces(socket::Sockets.TCPSocket)
     send(socket,"CALCulate:PARameter:CATalog?\n")
     data = recv(vna)
@@ -685,6 +883,22 @@ function instrumentErrCheck(socket::Sockets.TCPSocket)
     end
 end
 
+"""
+    instrumentSimplifiedSetup(socket::Sockets.TCPSocket; <keyword arguments>)
+
+Change basic settings of the VNA specified by `socket`.
+Returns struct `VNAParameters`.
+
+# Keyword Arguments
+- `calName::String = cals[:c3GHz]`: Name of the calibration to use
+- `power::Int = -20`: Power level (dBm)
+- `center::Float64 = 20.025e9`: Center of the frequency band (Hz)
+- `span::Float64 = 50e6`: Span of the frequency band (Hz)
+- `ifbandwidth::Int = Int(5e6)`: IF Bandwidth (Hz)
+- `sweepPoints::Int = 101` Number of sweep points in frequency band
+- `fastSweep::Bool = true`: Enable Fast Sweep mode
+- `measurement::String = "CH1_S11_1"`: Set which Channel, Parameter and Trace to measure
+"""
 function instrumentSimplifiedSetup(socket::Sockets.TCPSocket;
         calName::String = cals[:c3GHz],
         power::Int = -20,
@@ -718,13 +932,22 @@ function instrumentSimplifiedSetup(socket::Sockets.TCPSocket;
     )
 end
 
-cals = Dict{Symbol,String}(
-    :c3GHz => "{AAE0FD65-EEA1-4D1A-95EE-06B3FFCB32B7}",
-    :c300MHz => "{AC488992-4AB2-4EB5-9D23-34EF8774902F}",
-    :c3GHz_NEW => "{2D2A1B51-D3C2-4613-98CC-884561BE4A57}",
-    :c3GHz_9dB => "{483B25B2-6FE9-483E-8A93-0527B8D277E2}"
-)
+"""
+    VNAParameters
 
+This struct is used to store some important VNA settings and is returned by
+[`instrumentSimplifiedSetup`](@ref).
+
+The fields are:
+- `calName::String` Calibration label
+- `power::Integer` Power level
+- `center::Float64` Frequency center
+- `span::Float64` Frequency span
+- `ifbandwidth::Integer` IF bandwidth
+- `sweepPoints::Integer` Sweep points
+- `sweepTime::Float64` Sweep time
+- `fastSweep::Bool` Fast sweep
+"""
 struct VNAParameters
     calName::String
     power::Integer
